@@ -1,0 +1,132 @@
+/**
+ * Web Settings — serves a local calendar management page on port 80.
+ * Visit http://<device-ip>/ from any phone on the same WiFi.
+ */
+
+#ifndef WEB_SETTINGS_H
+#define WEB_SETTINGS_H
+
+#include <WebServer.h>
+#include <WiFi.h>
+#include "calendar_store.h"
+
+static WebServer webServer(80);
+
+static String wsPage() {
+    String h =
+        "<!DOCTYPE html><html><head>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Daily Scroll</title>"
+        "<style>"
+        "body{font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;"
+             "padding:16px;background:#f5f0e8;color:#2c2c2c}"
+        "h1{font-size:22px;margin:0 0 4px}"
+        "p.sub{color:#8a8a7a;font-size:13px;margin:0 0 16px}"
+        ".card{background:#fff;border-radius:10px;padding:12px 16px;margin-bottom:10px}"
+        ".row{display:flex;justify-content:space-between;align-items:center}"
+        ".name{font-weight:600;font-size:15px}"
+        ".type{font-size:11px;color:#888;text-transform:uppercase;margin-top:2px}"
+        ".url{font-size:11px;color:#aaa;margin-top:2px;word-break:break-all}"
+        "form.df{margin:0}"
+        ".btn{background:#e8742a;color:#fff;border:none;border-radius:8px;"
+             "padding:8px 14px;font-size:14px;cursor:pointer}"
+        ".btn-del{background:#e0ddd9;color:#555}"
+        "label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}"
+        "input,select{width:100%;padding:10px;border:1px solid #d0cecc;border-radius:8px;"
+                    "font-size:14px;box-sizing:border-box;background:#fff}"
+        ".hint{font-size:12px;color:#8a8a7a;margin:4px 0 0}"
+        ".submit{background:#e8742a;color:#fff;border:none;width:100%;padding:12px;"
+               "border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:16px}"
+        "h2{font-size:16px;margin:16px 0 8px}"
+        "</style></head><body>"
+        "<h1>Daily Scroll</h1>"
+        "<p class='sub'>Manage your calendars below.</p>";
+
+    // ── Current calendars ──
+    h += "<h2>Active Calendars</h2>";
+    if (cal_entry_count == 0) {
+        h += "<div class='card'><p style='color:#888;margin:0'>No calendars added yet.</p></div>";
+    }
+    for (int i = 0; i < cal_entry_count; i++) {
+        h += "<div class='card'><div class='row'>";
+        h += "<div><div class='name'>" + String(cal_entries[i].name) + "</div>";
+        h += "<div class='type'>" + String(cal_entries[i].type) + "</div>";
+        h += "<div class='url'>" + String(cal_entries[i].url) + "</div></div>";
+        h += "<form class='df' method='POST' action='/delete'>"
+             "<input type='hidden' name='idx' value='" + String(i) + "'>"
+             "<button class='btn btn-del' type='submit'>Remove</button>"
+             "</form>";
+        h += "</div></div>";
+    }
+
+    // ── Add calendar form ──
+    h += "<h2>Add Calendar</h2>"
+         "<div class='card'><form method='POST' action='/add'>"
+         "<label>Type</label>"
+         "<select name='type' id='tp' onchange='upd()'>"
+         "<option value='gcal'>Google Calendar (API)</option>"
+         "<option value='ical'>iCal / ICS URL</option>"
+         "</select>"
+         "<label>Display Name</label>"
+         "<input type='text' name='name' placeholder='Work Calendar' required>"
+         "<label id='ul'>Calendar ID</label>"
+         "<input type='text' name='url' id='ui' placeholder='you@gmail.com' required>"
+         "<p class='hint' id='uh'>Your Google Calendar ID — usually your Gmail address. "
+         "Find it in Google Calendar settings under &ldquo;Integrate calendar&rdquo;.</p>"
+         "<button class='submit' type='submit'>Add Calendar</button>"
+         "</form></div>"
+         "<script>"
+         "function upd(){"
+         "var t=document.getElementById('tp').value,"
+             "l=document.getElementById('ul'),"
+             "u=document.getElementById('ui'),"
+             "h=document.getElementById('uh');"
+         "if(t==='ical'){"
+         "l.textContent='iCal URL';"
+         "u.placeholder='https://calendar.google.com/calendar/ical/...';"
+         "h.innerHTML='Paste the full .ics URL. In Google Calendar: Settings &rarr; "
+                      "your calendar &rarr; &ldquo;Secret address in iCal format&rdquo;.';"
+         "}else{"
+         "l.textContent='Calendar ID';"
+         "u.placeholder='you@gmail.com';"
+         "h.textContent='Your Google Calendar ID — usually your Gmail address.';"
+         "}}"
+         "</script>"
+         "</body></html>";
+    return h;
+}
+
+static void wsRoot()   { webServer.send(200, "text/html", wsPage()); }
+
+static void wsAdd() {
+    String type = webServer.arg("type");
+    String name = webServer.arg("name");
+    String url  = webServer.arg("url");
+    name.trim(); url.trim();
+    if (name.length() > 0 && url.length() > 0)
+        calStoreAdd(type.c_str(), name.c_str(), url.c_str());
+    webServer.sendHeader("Location", "/");
+    webServer.send(302, "text/plain", "");
+}
+
+static void wsDelete() {
+    if (webServer.hasArg("idx"))
+        calStoreDelete(webServer.arg("idx").toInt());
+    webServer.sendHeader("Location", "/");
+    webServer.send(302, "text/plain", "");
+}
+
+void webSettingsSetup() {
+    webServer.on("/",       HTTP_GET,  wsRoot);
+    webServer.on("/add",    HTTP_POST, wsAdd);
+    webServer.on("/delete", HTTP_POST, wsDelete);
+    webServer.begin();
+    Serial.printf("[Web] Settings at http://%s/\n", WiFi.localIP().toString().c_str());
+}
+
+void webSettingsLoop() {
+    webServer.handleClient();
+}
+
+#endif // WEB_SETTINGS_H

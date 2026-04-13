@@ -90,7 +90,7 @@ void calStoreInit() {
         prefs.putInt("cnt", 1);
         prefs.putString("t0", "gcal");
         prefs.putString("n0", "My Calendar");
-        prefs.putString("u0", "theswedishmaker@gmail.com");
+        prefs.putString("u0", "your.email@gmail.com");
     }
     prefs.end();
     calStoreLoad();

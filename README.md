@@ -1,6 +1,6 @@
 # Task Viewer — CrowPanel 5.0" ESP32-S3
 
-A daily task viewer that pulls events from Google Calendar, displayed on an
+A daily task viewer that pulls events and tasks from Google Calendar, iCal feeds, and self-hosted Vikunja instances, displayed on an
 Elecrow CrowPanel 5.0" touchscreen (800×480). Touch-only interface.
 
 ## Hardware
@@ -49,10 +49,14 @@ esp32-project/
     ├── display_driver.h        # RGB display driver (LovyanGFX)
     ├── touch.h                 # GT911 touch input
     ├── wifi_manager.h          # WiFi + NTP
-    ├── calendar_fetch.h        # Google Calendar API + ICS
-    ├── calendar_store.h        # NVS calendar config persistence
+    ├── task_store.h            # NVS task provider config persistence
+    ├── task_fetch.h            # Task fetch coordinator
+    ├── task_common.h           # Shared structures, cache and helpers
+    ├── provider_gcal.h         # Google Calendar task provider implementation
+    ├── provider_ical.h         # iCal / ICS feed parser implementation
+    ├── provider_vikunja.h      # Vikunja task provider (fetch + completion sync)
     ├── streak_store.h          # NVS streak/level persistence
-    ├── web_settings.h          # Local web portal for calendar management
+    ├── web_settings.h          # Local web portal for task provider management
     ├── ui_taskviewer.h         # LVGL UI (800×480, dark mode, touch)
     ├── lv_conf.h               # LVGL configuration
     ├── credentials.h           # Your secrets — gitignored, not committed
@@ -62,16 +66,20 @@ esp32-project/
 
 ## Features
 
-- Google Calendar API + ICS URL support (multiple calendars)
+- Multiple task provider integrations:
+  - **Google Calendar**: Integrates with the official calendar events list API
+  - **iCal / ICS**: Directly downloads and parses `.ics` feeds
+  - **Vikunja**: Connects to self-hosted Vikunja instances via REST API with two-way done/status sync
 - Touch navigation: swipe left/right to browse days, tap to mark tasks done
 - Streak counter with level system (Starter → Legend → Titan)
 - Dark mode
-- Local web portal for managing calendar sources (no reflash needed)
+- Local web portal for managing task provider sources (no reflash needed)
 - NTP time sync
 
 ## Troubleshooting
 
 - **Blank screen**: Check display driver config matches your CrowPanel 5.0" model
 - **No WiFi**: Verify credentials.h has the correct SSID/password
-- **No events**: Check your Google Calendar API key and that the calendar ID is correct
+- **No events**: Check your Google Calendar API key and that the calendar/provider ID is correct
 - **Touch not working**: Verify GT911 driver matches your panel revision
+

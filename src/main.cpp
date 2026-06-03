@@ -9,8 +9,8 @@
 #include "display_driver.h"
 #include "touch.h"
 #include "wifi_manager.h"
-#include "calendar_store.h"
-#include "calendar_fetch.h"
+#include "task_store.h"
+#include "task_fetch.h"
 #include "web_settings.h"
 #include "streak_store.h"
 // sound_driver.h removed — I2S conflicts with RGB display on arduino-esp32 2.0.3
@@ -56,16 +56,16 @@ void setup() {
     
     // 3. Streak store + calendar store (NVS)
     streakStore.begin();
-    calStoreInit();
+    taskStoreInit();
 
     // 4. Web settings server
     if (online) webSettingsSetup();
 
-    // 5. Fetch calendar events
+    // 5. Fetch tasks
     if (online) {
-        lv_label_set_text(loading, "Loading calendar...");
+        lv_label_set_text(loading, "Loading tasks...");
         lv_timer_handler();
-        fetchCalendarEvents();
+        fetchTasks();
     } else {
         // Offline fallback
         strncpy(cal_tasks[0].title, "No WiFi connection", MAX_TITLE_LEN);
@@ -105,12 +105,12 @@ void loop() {
 
     delay(5);
 
-    // Detect wake-up from sleep → reconnect WiFi + refresh calendar
+    // Detect wake-up from sleep → reconnect WiFi + refresh tasks
     if (was_sleeping && !display_sleeping) {
         Serial.println("[Wake] Display woke up, checking WiFi...");
         if (ensureWiFiConnected()) {
             webSettingsSetup();  // restart web server after reconnect
-            fetchCalendarEvents();
+            fetchTasks();
             ui_completed = 0;
             for (int i = 0; i < cal_task_count; i++)
                 if (cal_tasks[i].completed) ui_completed++;
@@ -126,10 +126,10 @@ void loop() {
         lastWifiCheck = millis();
     }
 
-    // Periodic calendar refresh
+    // Periodic task refresh
     if (millis() - lastRefresh > REFRESH_INTERVAL_MS && wifi_connected && !display_sleeping) {
-        Serial.println("[Auto] Refreshing calendar...");
-        fetchCalendarEvents();
+        Serial.println("[Auto] Refreshing tasks...");
+        fetchTasks();
         ui_completed = 0;
         for (int i = 0; i < cal_task_count; i++)
             if (cal_tasks[i].completed) ui_completed++;

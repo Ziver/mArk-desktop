@@ -8,7 +8,7 @@
 
 #include <lvgl.h>
 // sound_driver.h removed — I2S conflicts with RGB LCD on arduino-esp32 2.0.3
-#include "calendar_fetch.h"
+#include "task_fetch.h"
 
 // Swedish font extensions (Montserrat + åäöÅÄÖ, fallback to montserrat for other glyphs)
 LV_FONT_DECLARE(font_swedish_14);
@@ -103,6 +103,11 @@ static void cb_complete(lv_event_t *e) {
     if (cal_task_count <= 0) return;
     bool was = cal_tasks[ui_current].completed;
     cal_tasks[ui_current].completed = !was;
+
+    // Sync completion status back to Vikunja if applicable
+    if (strncmp(cal_tasks[ui_current].id, "vikunja_", 8) == 0) {
+        updateVikunjaTaskCompletion(cal_tasks[ui_current].id, cal_tasks[ui_current].completed);
+    }
 
     ui_completed = 0;
     for (int i = 0; i < cal_task_count; i++)
@@ -671,7 +676,7 @@ void show_settings_overlay() {
 
     // Title
     lv_obj_t *title = lv_label_create(settings_overlay);
-    lv_label_set_text(title, "Calendar Settings");
+    lv_label_set_text(title, "Task Settings");
     lv_obj_set_style_text_color(title, th_fg(), 0);
     lv_obj_set_style_text_font(title, &font_swedish_28, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 60);
@@ -687,7 +692,7 @@ void show_settings_overlay() {
 
     // Instructions
     lv_obj_t *sub = lv_label_create(settings_overlay);
-    lv_label_set_text(sub, "Open this address in your phone's browser\nto add or remove calendars.");
+    lv_label_set_text(sub, "Open this address in your phone's browser\nto add or remove task providers.");
     lv_obj_set_style_text_color(sub, th_muted(), 0);
     lv_obj_set_style_text_font(sub, &font_swedish_14, 0);
     lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
@@ -835,7 +840,7 @@ void buildTaskViewerUI() {
     lv_obj_set_style_radius(btn_refresh_sb, 12, 0);
     lv_obj_add_event_cb(btn_refresh_sb, [](lv_event_t *e) {
         Serial.println("[UI] Refresh tapped!");
-        fetchCalendarEvents();
+        fetchTasks();
         ui_completed = 0;
         for (int i = 0; i < cal_task_count; i++)
             if (cal_tasks[i].completed) ui_completed++;

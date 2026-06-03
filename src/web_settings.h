@@ -1,5 +1,5 @@
 /**
- * Web Settings — serves a local calendar management page on port 80.
+ * Web Settings — serves a local task provider management page on port 80.
  * Visit http://<device-ip>/ from any phone on the same WiFi.
  */
 
@@ -8,7 +8,7 @@
 
 #include <WebServer.h>
 #include <WiFi.h>
-#include "calendar_store.h"
+#include "task_store.h"
 
 static WebServer webServer(80);
 
@@ -17,7 +17,7 @@ static String wsPage() {
         "<!DOCTYPE html><html><head>"
         "<meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Daily Scroll</title>"
+        "<title>Daily Scroll Settings</title>"
         "<style>"
         "body{font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;"
              "padding:16px;background:#f5f0e8;color:#2c2c2c}"
@@ -41,18 +41,18 @@ static String wsPage() {
         "h2{font-size:16px;margin:16px 0 8px}"
         "</style></head><body>"
         "<h1>Daily Scroll</h1>"
-        "<p class='sub'>Manage your calendars below.</p>";
+        "<p class='sub'>Manage your task providers below.</p>";
 
-    // ── Current calendars ──
-    h += "<h2>Active Calendars</h2>";
-    if (cal_entry_count == 0) {
-        h += "<div class='card'><p style='color:#888;margin:0'>No calendars added yet.</p></div>";
+    // ── Current providers ──
+    h += "<h2>Active Providers</h2>";
+    if (task_provider_count == 0) {
+        h += "<div class='card'><p style='color:#888;margin:0'>No task providers added yet.</p></div>";
     }
-    for (int i = 0; i < cal_entry_count; i++) {
+    for (int i = 0; i < task_provider_count; i++) {
         h += "<div class='card'><div class='row'>";
-        h += "<div><div class='name'>" + String(cal_entries[i].name) + "</div>";
-        h += "<div class='type'>" + String(cal_entries[i].type) + "</div>";
-        h += "<div class='url'>" + String(cal_entries[i].url) + "</div></div>";
+        h += "<div><div class='name'>" + String(task_providers[i].name) + "</div>";
+        h += "<div class='type'>" + String(task_providers[i].type) + "</div>";
+        h += "<div class='url'>" + String(task_providers[i].url) + "</div></div>";
         h += "<form class='df' method='POST' action='/delete'>"
              "<input type='hidden' name='idx' value='" + String(i) + "'>"
              "<button class='btn btn-del' type='submit'>Remove</button>"
@@ -60,37 +60,54 @@ static String wsPage() {
         h += "</div></div>";
     }
 
-    // ── Add calendar form ──
-    h += "<h2>Add Calendar</h2>"
+    // ── Add provider form ──
+    h += "<h2>Add Task Provider</h2>"
          "<div class='card'><form method='POST' action='/add'>"
          "<label>Type</label>"
          "<select name='type' id='tp' onchange='upd()'>"
          "<option value='gcal'>Google Calendar (API)</option>"
          "<option value='ical'>iCal / ICS URL</option>"
+         "<option value='vikunja'>Vikunja Tasks (API)</option>"
          "</select>"
          "<label>Display Name</label>"
-         "<input type='text' name='name' placeholder='Work Calendar' required>"
-         "<label id='ul'>Calendar ID</label>"
+         "<input type='text' name='name' placeholder='Work Tasks' required>"
+         "<label id='ul'>Google Calendar ID / Email</label>"
          "<input type='text' name='url' id='ui' placeholder='you@gmail.com' required>"
          "<p class='hint' id='uh'>Your Google Calendar ID — usually your Gmail address. "
          "Find it in Google Calendar settings under &ldquo;Integrate calendar&rdquo;.</p>"
-         "<button class='submit' type='submit'>Add Calendar</button>"
+         "<div id='tg' style='display:none;'>"
+         "<label>API Token</label>"
+         "<input type='password' name='token' id='ti' placeholder='tk_...'>"
+         "</div>"
+         "<button class='submit' type='submit'>Add Provider</button>"
          "</form></div>"
          "<script>"
          "function upd(){"
          "var t=document.getElementById('tp').value,"
              "l=document.getElementById('ul'),"
              "u=document.getElementById('ui'),"
-             "h=document.getElementById('uh');"
+             "h=document.getElementById('uh'),"
+             "g=document.getElementById('tg'),"
+             "i=document.getElementById('ti');"
          "if(t==='ical'){"
          "l.textContent='iCal URL';"
          "u.placeholder='https://calendar.google.com/calendar/ical/...';"
          "h.innerHTML='Paste the full .ics URL. In Google Calendar: Settings &rarr; "
-                      "your calendar &rarr; &ldquo;Secret address in iCal format&rdquo;.';"
+                      "your provider &rarr; &ldquo;Secret address in iCal format&rdquo;.';"
+         "g.style.display='none';"
+         "i.required=false;"
+         "}else if(t==='vikunja'){"
+         "l.textContent='Vikunja Base URL';"
+         "u.placeholder='https://vikunja.example.com';"
+         "h.textContent='The base URL of your self-hosted Vikunja instance (no trailing slash).';"
+         "g.style.display='block';"
+         "i.required=true;"
          "}else{"
-         "l.textContent='Calendar ID';"
+         "l.textContent='Google Calendar ID / Email';"
          "u.placeholder='you@gmail.com';"
          "h.textContent='Your Google Calendar ID — usually your Gmail address.';"
+         "g.style.display='none';"
+         "i.required=false;"
          "}}"
          "</script>"
          "</body></html>";
@@ -100,19 +117,20 @@ static String wsPage() {
 static void wsRoot()   { webServer.send(200, "text/html", wsPage()); }
 
 static void wsAdd() {
-    String type = webServer.arg("type");
-    String name = webServer.arg("name");
-    String url  = webServer.arg("url");
-    name.trim(); url.trim();
+    String type  = webServer.arg("type");
+    String name  = webServer.arg("name");
+    String url   = webServer.arg("url");
+    String token = webServer.arg("token");
+    name.trim(); url.trim(); token.trim();
     if (name.length() > 0 && url.length() > 0)
-        calStoreAdd(type.c_str(), name.c_str(), url.c_str());
+        taskStoreAdd(type.c_str(), name.c_str(), url.c_str(), token.c_str());
     webServer.sendHeader("Location", "/");
     webServer.send(302, "text/plain", "");
 }
 
 static void wsDelete() {
     if (webServer.hasArg("idx"))
-        calStoreDelete(webServer.arg("idx").toInt());
+        taskStoreDelete(webServer.arg("idx").toInt());
     webServer.sendHeader("Location", "/");
     webServer.send(302, "text/plain", "");
 }

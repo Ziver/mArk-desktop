@@ -155,9 +155,9 @@ static void cb_gesture(lv_event_t *e) {
     else if (dir == LV_DIR_RIGHT) cb_prev(e);
 }
 
-// ── Dark mode toggle — full rebuild ──
 static void cb_toggle_dark(lv_event_t *e) {
     ui_dark_mode = !ui_dark_mode;
+    taskStoreSetDarkMode(ui_dark_mode);
     Serial.printf("[UI] Dark mode: %s\n", ui_dark_mode ? "ON" : "OFF");
     lv_obj_clean(lv_scr_act());
     complete_screen = NULL;
@@ -703,6 +703,11 @@ void show_settings_overlay() {
 // BUILD MAIN UI
 // ══════════════════════════════════════
 void buildTaskViewerUI() {
+    static bool ui_dark_mode_initialized = false;
+    if (!ui_dark_mode_initialized) {
+        ui_dark_mode = taskStoreGetDarkMode();
+        ui_dark_mode_initialized = true;
+    }
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, th_bg(), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);

@@ -88,6 +88,21 @@ static bool taskStoreDelete(int idx) {
     return true;
 }
 
+static bool taskStoreGetDarkMode() {
+    Preferences prefs;
+    prefs.begin("tasks", true);
+    bool dark = prefs.getBool("dark", false);
+    prefs.end();
+    return dark;
+}
+
+static void taskStoreSetDarkMode(bool dark) {
+    Preferences prefs;
+    prefs.begin("tasks", false);
+    prefs.putBool("dark", dark);
+    prefs.end();
+}
+
 // Call once at startup — seeds default or migrates old config.
 inline void taskStoreInit() {
     Preferences prefs;

@@ -24,6 +24,7 @@ struct TaskProvider {
 static TaskProvider task_providers[MAX_PROVIDERS];
 static int task_provider_count = 0;
 static int screen_timeout_min = 0;
+static int sync_interval_min = 5;
 
 static void taskStoreLoad() {
     Preferences prefs;
@@ -44,6 +45,7 @@ static void taskStoreLoad() {
         task_provider_count++;
     }
     screen_timeout_min = prefs.getInt("timeout", 0);
+    sync_interval_min = prefs.getInt("interval", 5);
     prefs.end();
 }
 
@@ -130,6 +132,18 @@ static void taskStoreSetScreenTimeout(int timeout) {
     prefs.putInt("timeout", timeout);
     prefs.end();
     screen_timeout_min = timeout;
+}
+
+static int taskStoreGetSyncInterval() {
+    return sync_interval_min;
+}
+
+static void taskStoreSetSyncInterval(int interval) {
+    Preferences prefs;
+    prefs.begin("tasks", false);
+    prefs.putInt("interval", interval);
+    prefs.end();
+    sync_interval_min = interval;
 }
 
 // Call once at startup — seeds default or migrates old config.

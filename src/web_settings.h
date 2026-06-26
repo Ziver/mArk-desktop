@@ -100,6 +100,9 @@ static String wsPage() {
          "<option value='1'" + String(taskStoreGetListView() ? " selected" : "") + ">List of Tasks</option>"
          "</select>"
          "<p class='hint'>Choose how tasks are presented on the main screen.</p>"
+         "<label>Task Sync Interval (minutes)</label>"
+         "<input type='number' name='interval' min='0' max='1440' value='" + String(taskStoreGetSyncInterval()) + "' required>"
+         "<p class='hint'>How often tasks are synced from providers. Set to 0 to disable automatic sync.</p>"
          "<button class='submit' type='submit'>Save Settings</button>"
          "</form></div>";
 
@@ -163,6 +166,12 @@ static void wsSettings() {
         if (timeout < 0) timeout = 0;
         taskStoreSetScreenTimeout(timeout);
         Serial.printf("[Web] Saved screen timeout: %d min\n", timeout);
+    }
+    if (webServer.hasArg("interval")) {
+        int interval = webServer.arg("interval").toInt();
+        if (interval < 0) interval = 0;
+        taskStoreSetSyncInterval(interval);
+        Serial.printf("[Web] Saved sync interval: %d min\n", interval);
     }
     if (webServer.hasArg("dark_mode")) {
         bool dark = webServer.arg("dark_mode").toInt() == 1;

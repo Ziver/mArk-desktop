@@ -172,7 +172,6 @@ void setup() {
 unsigned long lastRefresh     = 0;
 unsigned long lastClockUpdate = 0;
 unsigned long lastWifiCheck   = 0;
-#define REFRESH_INTERVAL_MS   (5  * 60 * 1000)
 #define CLOCK_UPDATE_MS       10000
 #define WIFI_CHECK_MS         (30 * 1000)
 
@@ -221,7 +220,8 @@ void loop() {
     }
 
     // Periodic task refresh
-    if (millis() - lastRefresh > REFRESH_INTERVAL_MS && wifi_connected && !display_sleeping) {
+    unsigned long interval_ms = (unsigned long)taskStoreGetSyncInterval() * 60 * 1000;
+    if (interval_ms > 0 && millis() - lastRefresh > interval_ms && wifi_connected && !display_sleeping) {
         Serial.println("[Auto] Refreshing tasks...");
         trigger_task_refresh();
         lastRefresh = millis();

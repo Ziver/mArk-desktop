@@ -507,7 +507,7 @@ void trigger_task_refresh() {
     }
     if (ui_current >= cal_task_count) ui_current = 0;
 
-    do_refresh_all();
+    uiRebuild(settings_overlay != NULL);
 
     delay(500);
 

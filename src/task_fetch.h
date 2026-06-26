@@ -6,9 +6,9 @@
 #define TASK_FETCH_H
 
 #include "task_common.h"
-#include "provider_gcal.h"
-#include "provider_ical.h"
-#include "provider_vikunja.h"
+#include "providers/provider_gcal.h"
+#include "providers/provider_ical.h"
+#include "providers/provider_vikunja.h"
 
 // ══════════════════════════════════════
 // MAIN ENTRY POINT

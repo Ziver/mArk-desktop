@@ -39,25 +39,25 @@ static bool fetchVikunjaForDay(const TaskProvider& entry, int cal_idx) {
     now.tm_mday += cal_day_offset;
     mktime(&now);
 
-    char timeMin[32], timeMax[32];
-    snprintf(timeMin, sizeof(timeMin), "%04d-%02d-%02d 00:00",
+    char timeMin[16], timeMax[16];
+    snprintf(timeMin, sizeof(timeMin), "%04d-%02d-%02d",
              now.tm_year + 1900, now.tm_mon + 1, now.tm_mday);
 
     struct tm nextDay = now;
     nextDay.tm_mday += 1;
     mktime(&nextDay);
-    snprintf(timeMax, sizeof(timeMax), "%04d-%02d-%02d 00:00",
+    snprintf(timeMax, sizeof(timeMax), "%04d-%02d-%02d",
              nextDay.tm_year + 1900, nextDay.tm_mon + 1, nextDay.tm_mday);
 
     String baseUrl = sanitizeVikunjaBaseUrl(entry.url);
-    String filterEscaped = "due_date >= \"" + String(timeMin) + "\" && due_date < \"" + String(timeMax) + "\"";
-    filterEscaped.replace("\"", "%22");
+    String filterEscaped = "due_date >= " + String(timeMin) + " && due_date < " + String(timeMax) +
+                           " || start_date >= " + String(timeMin) + " && start_date < " + String(timeMax);
     filterEscaped.replace(" ", "%20");
     filterEscaped.replace("&", "%26");
     filterEscaped.replace(">", "%3E");
     filterEscaped.replace("<", "%3C");
     filterEscaped.replace("=", "%3D");
-    filterEscaped.replace(":", "%3A");
+    filterEscaped.replace("|", "%7C");
 
     String url = baseUrl + "/api/v1/tasks?filter=" + filterEscaped;
 
@@ -112,8 +112,14 @@ static bool fetchVikunjaForDay(const TaskProvider& entry, int cal_idx) {
         t.title[MAX_TITLE_LEN - 1] = '\0';
 
         const char* due_date_str = item["due_date"];
-        if (due_date_str && strlen(due_date_str) >= 19 && strncmp(due_date_str, "0001-01-01", 10) != 0) {
+        const char* start_date_str = item["start_date"];
+        bool has_due = (due_date_str && strlen(due_date_str) >= 19 && strncmp(due_date_str, "0001-01-01", 10) != 0);
+        bool has_start = (start_date_str && strlen(start_date_str) >= 19 && strncmp(start_date_str, "0001-01-01", 10) != 0);
+
+        if (has_due) {
             parseTime(due_date_str, t.time, sizeof(t.time));
+        } else if (has_start) {
+            parseTime(start_date_str, t.time, sizeof(t.time));
         } else {
             snprintf(t.time, sizeof(t.time), "All day");
         }

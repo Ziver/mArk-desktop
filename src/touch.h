@@ -55,6 +55,7 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
     (void)indev_driver;
     if (touch_has_signal()) {
         if (touch_touched()) {
+            last_activity_time = millis();
             if (display_sleeping) {
                 setDisplaySleep(false);
                 data->state = LV_INDEV_STATE_REL;

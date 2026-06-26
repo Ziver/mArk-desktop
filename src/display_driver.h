@@ -152,10 +152,14 @@ void setupDisplay() {
 }
 
 static bool display_sleeping = false;
+static unsigned long last_activity_time = 0;
 
 void setDisplaySleep(bool sleep) {
     display_sleeping = sleep;
     ledcWrite(1, sleep ? 0 : 255);
+    if (!sleep) {
+        last_activity_time = millis();
+    }
     Serial.printf("[DISP] Sleep: %s\n", sleep ? "ON" : "OFF");
 }
 

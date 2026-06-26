@@ -23,6 +23,7 @@ struct TaskProvider {
 
 static TaskProvider task_providers[MAX_PROVIDERS];
 static int task_provider_count = 0;
+static int screen_timeout_min = 0;
 
 static void taskStoreLoad() {
     Preferences prefs;
@@ -42,6 +43,7 @@ static void taskStoreLoad() {
         prefs.getString(kk, task_providers[i].token, sizeof(task_providers[i].token));
         task_provider_count++;
     }
+    screen_timeout_min = prefs.getInt("timeout", 0);
     prefs.end();
 }
 
@@ -101,6 +103,18 @@ static void taskStoreSetDarkMode(bool dark) {
     prefs.begin("tasks", false);
     prefs.putBool("dark", dark);
     prefs.end();
+}
+
+static int taskStoreGetScreenTimeout() {
+    return screen_timeout_min;
+}
+
+static void taskStoreSetScreenTimeout(int timeout) {
+    Preferences prefs;
+    prefs.begin("tasks", false);
+    prefs.putInt("timeout", timeout);
+    prefs.end();
+    screen_timeout_min = timeout;
 }
 
 // Call once at startup — seeds default or migrates old config.

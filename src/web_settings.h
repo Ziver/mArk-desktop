@@ -80,8 +80,18 @@ static String wsPage() {
          "<input type='password' name='token' id='ti' placeholder='tk_...'>"
          "</div>"
          "<button class='submit' type='submit'>Add Provider</button>"
-         "</form></div>"
-         "<script>"
+         "</form></div>";
+
+    // ── Device Settings ──
+    h += "<h2>Device Settings</h2>"
+         "<div class='card'><form method='POST' action='/settings'>"
+         "<label>Screen Timeout (minutes)</label>"
+         "<input type='number' name='timeout' min='0' max='1440' value='" + String(taskStoreGetScreenTimeout()) + "' required>"
+         "<p class='hint'>Minutes of inactivity before the screen turns off. Set to 0 to disable timeout.</p>"
+         "<button class='submit' type='submit'>Save Settings</button>"
+         "</form></div>";
+
+    h += "<script>"
          "function upd(){"
          "var t=document.getElementById('tp').value,"
              "l=document.getElementById('ul'),"
@@ -135,10 +145,22 @@ static void wsDelete() {
     webServer.send(302, "text/plain", "");
 }
 
+static void wsSettings() {
+    if (webServer.hasArg("timeout")) {
+        int timeout = webServer.arg("timeout").toInt();
+        if (timeout < 0) timeout = 0;
+        taskStoreSetScreenTimeout(timeout);
+        Serial.printf("[Web] Saved screen timeout: %d min\n", timeout);
+    }
+    webServer.sendHeader("Location", "/");
+    webServer.send(302, "text/plain", "");
+}
+
 void webSettingsSetup() {
     webServer.on("/",       HTTP_GET,  wsRoot);
     webServer.on("/add",    HTTP_POST, wsAdd);
     webServer.on("/delete", HTTP_POST, wsDelete);
+    webServer.on("/settings", HTTP_POST, wsSettings);
     webServer.begin();
     Serial.printf("[Web] Settings at http://%s/\n", WiFi.localIP().toString().c_str());
 }

@@ -77,9 +77,10 @@ void setup() {
     // 6. Clear entire screen and build UI
     lv_obj_clean(lv_scr_act());
     buildTaskViewerUI();
-    
+
     // Force full screen redraw
     lv_refr_now(NULL);
+    last_activity_time = millis();
     Serial.println("[OK] Setup complete!");
 }
 
@@ -104,6 +105,18 @@ void loop() {
     webSettingsLoop();
 
     delay(5);
+
+    // Inactivity screen timeout check
+    if (!display_sleeping) {
+        int timeout_min = taskStoreGetScreenTimeout();
+        if (timeout_min > 0) {
+            unsigned long timeout_ms = (unsigned long)timeout_min * 60 * 1000;
+            if (millis() - last_activity_time > timeout_ms) {
+                Serial.printf("[Timeout] Screen inactive for %d min, turning off\n", timeout_min);
+                setDisplaySleep(true);
+            }
+        }
+    }
 
     // Detect wake-up from sleep → reconnect WiFi + refresh tasks
     if (was_sleeping && !display_sleeping) {

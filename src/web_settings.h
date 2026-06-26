@@ -94,6 +94,12 @@ static String wsPage() {
          "<option value='1'" + String(taskStoreGetDarkMode() ? " selected" : "") + ">Dark Theme</option>"
          "</select>"
          "<p class='hint'>Choose Light Mode or Dark Mode theme for the display.</p>"
+         "<label>Task Visualization</label>"
+         "<select name='list_view'>"
+         "<option value='0'" + String(taskStoreGetListView() ? "" : " selected") + ">Single Task</option>"
+         "<option value='1'" + String(taskStoreGetListView() ? " selected" : "") + ">List of Tasks</option>"
+         "</select>"
+         "<p class='hint'>Choose how tasks are presented on the main screen.</p>"
          "<button class='submit' type='submit'>Save Settings</button>"
          "</form></div>";
 
@@ -167,6 +173,18 @@ static void wsSettings() {
             Serial.printf("[Web] Saved theme preference: %s\n", dark ? "DARK" : "LIGHT");
 
             // Rebuild UI immediately to reflect the theme change
+            uiRebuild();
+        }
+    }
+    if (webServer.hasArg("list_view")) {
+        bool lv = webServer.arg("list_view").toInt() == 1;
+        bool old_lv = taskStoreGetListView();
+        if (lv != old_lv) {
+            taskStoreSetListView(lv);
+            ui_list_view = lv;
+            Serial.printf("[Web] Saved list view preference: %s\n", lv ? "ON" : "OFF");
+
+            // Rebuild UI immediately to reflect the layout change
             uiRebuild();
         }
     }

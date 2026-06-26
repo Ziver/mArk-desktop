@@ -47,8 +47,12 @@ extern StreakStore streakStore;
 static int ui_current = 0;
 static int ui_completed = 0;
 static bool ui_dark_mode = false;
+static bool ui_list_view = false;
 static bool ui_showing_complete = false;
 static bool ui_showing_keyboard = false;
+static bool ui_refreshing = false;
+static lv_obj_t *btn_refresh_sb = nullptr;
+static lv_obj_t *lbl_refresh_sb = nullptr;
 
 // ── Theme-aware color helpers ──
 static inline lv_color_t th_bg()      { return ui_dark_mode ? C_DARK_BG : C_BG; }
@@ -92,6 +96,7 @@ void refresh_clock();
 void show_complete_screen();
 void hide_complete_screen();
 void do_refresh_all();
+void trigger_task_refresh();
 static void show_keyboard();
 static void hide_keyboard();
 void buildTaskViewerUI();
@@ -161,6 +166,38 @@ static void cb_toggle_dark(lv_event_t *e) {
     taskStoreSetDarkMode(ui_dark_mode);
     Serial.printf("[UI] Dark mode: %s\n", ui_dark_mode ? "ON" : "OFF");
     uiRebuild(true);
+}
+
+static void cb_toggle_view(lv_event_t *e) {
+    ui_list_view = !ui_list_view;
+    taskStoreSetListView(ui_list_view);
+    Serial.printf("[UI] List view: %s\n", ui_list_view ? "ON" : "OFF");
+    uiRebuild(true);
+}
+
+static void cb_list_toggle(lv_event_t *e) {
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= cal_task_count) return;
+
+    bool was = cal_tasks[idx].completed;
+    cal_tasks[idx].completed = !was;
+
+    // Sync completion status back to Vikunja if applicable
+    if (strncmp(cal_tasks[idx].id, "vikunja_", 8) == 0) {
+        updateVikunjaTaskCompletion(cal_tasks[idx].id, cal_tasks[idx].completed);
+    }
+
+    ui_completed = 0;
+    for (int i = 0; i < cal_task_count; i++) {
+        if (cal_tasks[i].completed) ui_completed++;
+    }
+
+    if (ui_completed == cal_task_count && cal_task_count > 0) {
+        streakStore.markDayComplete(cal_day_offset);
+        show_complete_screen();
+    }
+
+    uiRebuild();
 }
 
 // ── Completion screen callbacks ──
@@ -441,6 +478,42 @@ void do_refresh_all() {
     refresh_clock();
 }
 
+static void set_refresh_state(bool refreshing) {
+    ui_refreshing = refreshing;
+    if (!btn_refresh_sb || !lbl_refresh_sb) return;
+
+    if (refreshing) {
+        lv_obj_add_state(btn_refresh_sb, LV_STATE_DISABLED);
+        lv_label_set_text(lbl_refresh_sb, LV_SYMBOL_LOOP "  REFRESHING...");
+        lv_obj_set_style_bg_color(btn_refresh_sb, th_card(), 0);
+        lv_obj_set_style_text_color(lbl_refresh_sb, th_muted(), 0);
+    } else {
+        lv_obj_clear_state(btn_refresh_sb, LV_STATE_DISABLED);
+        lv_label_set_text(lbl_refresh_sb, LV_SYMBOL_REFRESH "  REFRESH");
+        lv_obj_set_style_bg_color(btn_refresh_sb, th_card(), 0);
+        lv_obj_set_style_text_color(lbl_refresh_sb, th_fg(), 0);
+    }
+    lv_refr_now(NULL);
+}
+
+void trigger_task_refresh() {
+    set_refresh_state(true);
+
+    fetchTasks();
+
+    ui_completed = 0;
+    for (int i = 0; i < cal_task_count; i++) {
+        if (cal_tasks[i].completed) ui_completed++;
+    }
+    if (ui_current >= cal_task_count) ui_current = 0;
+
+    do_refresh_all();
+
+    delay(500);
+
+    set_refresh_state(false);
+}
+
 void refresh_clock() {
     if (!lbl_clock) return;
     struct tm tm;
@@ -452,6 +525,7 @@ void refresh_clock() {
 }
 
 void refresh_task() {
+    if (ui_list_view) return;
     if (cal_task_count <= 0) {
         lv_label_set_text(lbl_task_counter, "NO TASKS");
         lv_label_set_text(lbl_task_time, "");
@@ -499,6 +573,7 @@ void refresh_progress() {
 }
 
 void refresh_dots() {
+    if (ui_list_view) return;
     lv_obj_clean(dots_container);
     for (int i = 0; i < cal_task_count; i++) {
         lv_obj_t *d = lv_obj_create(dots_container);
@@ -717,23 +792,41 @@ void show_settings_overlay() {
     lv_obj_set_style_border_color(btn_dark, th_border(), 0);
     lv_obj_set_style_shadow_width(btn_dark, 0, 0);
     lv_obj_add_event_cb(btn_dark, cb_toggle_dark, LV_EVENT_CLICKED, NULL);
-    lv_obj_align(btn_dark, LV_ALIGN_BOTTOM_MID, 0, -60);
+    lv_obj_align(btn_dark, LV_ALIGN_BOTTOM_MID, -100, -60);
 
     lv_obj_t *dark_lbl = lv_label_create(btn_dark);
     lv_label_set_text(dark_lbl, ui_dark_mode ? LV_SYMBOL_EYE_CLOSE "  LIGHT" : LV_SYMBOL_EYE_OPEN "  DARK");
     lv_obj_set_style_text_color(dark_lbl, th_fg(), 0);
     lv_obj_set_style_text_font(dark_lbl, &font_swedish_14, 0);
     lv_obj_center(dark_lbl);
+
+    // View mode button
+    lv_obj_t *btn_view = lv_btn_create(settings_overlay);
+    lv_obj_set_size(btn_view, 180, 44);
+    lv_obj_set_style_bg_color(btn_view, th_card(), 0);
+    lv_obj_set_style_radius(btn_view, 12, 0);
+    lv_obj_set_style_border_width(btn_view, 1, 0);
+    lv_obj_set_style_border_color(btn_view, th_border(), 0);
+    lv_obj_set_style_shadow_width(btn_view, 0, 0);
+    lv_obj_add_event_cb(btn_view, cb_toggle_view, LV_EVENT_CLICKED, NULL);
+    lv_obj_align(btn_view, LV_ALIGN_BOTTOM_MID, 100, -60);
+
+    lv_obj_t *view_lbl = lv_label_create(btn_view);
+    lv_label_set_text(view_lbl, ui_list_view ? LV_SYMBOL_LIST "  LIST VIEW" : LV_SYMBOL_FILE "  SINGLE VIEW");
+    lv_obj_set_style_text_color(view_lbl, th_fg(), 0);
+    lv_obj_set_style_text_font(view_lbl, &font_swedish_14, 0);
+    lv_obj_center(view_lbl);
 }
 
 // ══════════════════════════════════════
 // BUILD MAIN UI
 // ══════════════════════════════════════
 void buildTaskViewerUI() {
-    static bool ui_dark_mode_initialized = false;
-    if (!ui_dark_mode_initialized) {
+    static bool ui_init = false;
+    if (!ui_init) {
         ui_dark_mode = taskStoreGetDarkMode();
-        ui_dark_mode_initialized = true;
+        ui_list_view = taskStoreGetListView();
+        ui_init = true;
     }
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, th_bg(), 0);
@@ -865,26 +958,28 @@ void buildTaskViewerUI() {
 
     // ── Bottom toolbar ──
     // Refresh button
-    lv_obj_t *btn_refresh_sb = lv_btn_create(sb);
+    btn_refresh_sb = lv_btn_create(sb);
     lv_obj_set_size(btn_refresh_sb, SIDEBAR_W - 32, 40);
     lv_obj_set_pos(btn_refresh_sb, 16, SCREEN_H - 48);
     lv_obj_set_style_bg_color(btn_refresh_sb, th_card(), 0);
+    lv_obj_set_style_bg_color(btn_refresh_sb, th_border(), LV_STATE_PRESSED);
     lv_obj_set_style_radius(btn_refresh_sb, 12, 0);
+    lv_obj_set_style_shadow_width(btn_refresh_sb, 0, 0);
     lv_obj_add_event_cb(btn_refresh_sb, [](lv_event_t *e) {
         Serial.println("[UI] Refresh tapped!");
-        fetchTasks();
-        ui_completed = 0;
-        for (int i = 0; i < cal_task_count; i++)
-            if (cal_tasks[i].completed) ui_completed++;
-        if (ui_current >= cal_task_count) ui_current = 0;
-        do_refresh_all();
+        trigger_task_refresh();
     }, LV_EVENT_CLICKED, NULL);
 
-    lv_obj_t *rl = lv_label_create(btn_refresh_sb);
-    lv_label_set_text(rl, LV_SYMBOL_REFRESH "  REFRESH");
-    lv_obj_set_style_text_color(rl, th_fg(), 0);
-    lv_obj_set_style_text_font(rl, &font_swedish_14, 0);
-    lv_obj_center(rl);
+    lbl_refresh_sb = lv_label_create(btn_refresh_sb);
+    lv_label_set_text(lbl_refresh_sb, ui_refreshing ? LV_SYMBOL_LOOP "  REFRESHING..." : LV_SYMBOL_REFRESH "  REFRESH");
+    lv_obj_set_style_text_color(lbl_refresh_sb, ui_refreshing ? th_muted() : th_fg(), 0);
+    lv_obj_set_style_text_font(lbl_refresh_sb, &font_swedish_14, 0);
+    lv_obj_center(lbl_refresh_sb);
+
+    if (ui_refreshing) {
+        lv_obj_add_state(btn_refresh_sb, LV_STATE_DISABLED);
+        lv_obj_set_style_bg_color(btn_refresh_sb, th_card(), 0);
+    }
 
     // ═══ RIGHT PANEL ═══
     lv_obj_t *mp = lv_obj_create(scr);
@@ -964,88 +1059,176 @@ void buildTaskViewerUI() {
     lv_obj_set_style_text_font(al, &font_swedish_14, 0);
     lv_obj_align(al, LV_ALIGN_CENTER, 0, -3);
 
-    // Task counter + time
-    lbl_task_counter = lv_label_create(mp);
-    lv_label_set_text(lbl_task_counter, "TASK 1 OF 1");
-    lv_obj_set_style_text_color(lbl_task_counter, C_ACCENT, 0);
-    lv_obj_set_style_text_font(lbl_task_counter, &font_swedish_14, 0);
-    lv_obj_set_pos(lbl_task_counter, 30, 120);
+    if (ui_list_view) {
+        // List View
+        lv_obj_t *list_container = lv_obj_create(mp);
+        lv_obj_remove_style_all(list_container);
+        lv_obj_set_size(list_container, MAIN_W - 60, 380);
+        lv_obj_set_pos(list_container, 30, 80);
+        lv_obj_set_flex_flow(list_container, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(list_container, 10, 0);
+        lv_obj_set_flex_align(list_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        lv_obj_add_flag(list_container, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_scrollbar_mode(list_container, LV_SCROLLBAR_MODE_AUTO);
 
-    lbl_task_time = lv_label_create(mp);
-    lv_label_set_text(lbl_task_time, "");
-    lv_obj_set_style_text_color(lbl_task_time, th_muted(), 0);
-    lv_obj_set_style_text_font(lbl_task_time, &font_swedish_14, 0);
-    lv_obj_set_pos(lbl_task_time, 170, 120);
+        if (cal_task_count <= 0) {
+            lv_obj_t *lbl_empty = lv_label_create(list_container);
+            lv_label_set_text(lbl_empty, "No tasks for today");
+            lv_obj_set_style_text_color(lbl_empty, th_muted(), 0);
+            lv_obj_set_style_text_font(lbl_empty, &font_swedish_14, 0);
+            lv_obj_set_style_text_align(lbl_empty, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_set_width(lbl_empty, MAIN_W - 60);
+            lv_obj_align(lbl_empty, LV_ALIGN_CENTER, 0, 0);
+        }
 
-    // Completed badge
-    badge_completed = lv_obj_create(mp);
-    lv_obj_remove_style_all(badge_completed);
-    lv_obj_set_size(badge_completed, 120, 28);
-    lv_obj_set_pos(badge_completed, MAIN_W - 160, 117);
-    lv_obj_set_style_bg_color(badge_completed, C_ACCENT, 0);
-    lv_obj_set_style_bg_opa(badge_completed, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(badge_completed, 14, 0);
-    lv_obj_t *bl = lv_label_create(badge_completed);
-    lv_label_set_text(bl, "COMPLETED");
-    lv_obj_set_style_text_color(bl, C_WHITE, 0);
-    lv_obj_set_style_text_font(bl, &font_swedish_14, 0);
-    lv_obj_center(bl);
-    lv_obj_add_flag(badge_completed, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < cal_task_count; i++) {
+            lv_obj_t *card = lv_obj_create(list_container);
+            lv_obj_remove_style_all(card);
+            lv_obj_set_size(card, MAIN_W - 60, 56);
+            lv_obj_set_style_bg_color(card, th_card(), 0);
+            lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(card, 12, 0);
+            lv_obj_set_style_border_width(card, 1, 0);
+            lv_obj_set_style_border_color(card, th_border(), 0);
+            lv_obj_set_style_pad_left(card, 16, 0);
+            lv_obj_set_style_pad_right(card, 16, 0);
+            lv_obj_set_style_pad_column(card, 16, 0);
+            lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Hero task title
-    lbl_task_title = lv_label_create(mp);
-    lv_label_set_text(lbl_task_title, "Loading...");
-    lv_obj_set_style_text_color(lbl_task_title, th_fg(), 0);
-    lv_obj_set_style_text_font(lbl_task_title, &font_swedish_48, 0);
-    lv_obj_set_width(lbl_task_title, MAIN_W - 70);
-    lv_label_set_long_mode(lbl_task_title, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(lbl_task_title, 30, 155);
+            lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    // Bottom bar
-    dots_container = lv_obj_create(mp);
-    lv_obj_remove_style_all(dots_container);
-    lv_obj_set_size(dots_container, 300, 14);
-    lv_obj_set_pos(dots_container, 30, SCREEN_H - 50);
-    lv_obj_set_flex_flow(dots_container, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(dots_container, 6, 0);
-    lv_obj_set_flex_align(dots_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            // Checkmark button (interactive)
+            lv_obj_t *btn_check = lv_btn_create(card);
+            lv_obj_set_size(btn_check, 24, 24);
+            lv_obj_set_style_radius(btn_check, 12, 0); // Round circle
+            lv_obj_set_style_bg_color(btn_check, cal_tasks[i].completed ? C_ACCENT : lv_color_hex(0x000000), 0);
+            lv_obj_set_style_bg_opa(btn_check, cal_tasks[i].completed ? LV_OPA_COVER : LV_OPA_0, 0);
+            lv_obj_set_style_border_width(btn_check, 2, 0);
+            lv_obj_set_style_border_color(btn_check, cal_tasks[i].completed ? C_ACCENT : th_muted(), 0);
+            lv_obj_set_style_shadow_width(btn_check, 0, 0);
+            lv_obj_add_event_cb(btn_check, cb_list_toggle, LV_EVENT_CLICKED, (void*)(intptr_t)i);
 
-    btn_complete = lv_btn_create(mp);
-    lv_obj_set_size(btn_complete, 140, 48);
-    lv_obj_set_pos(btn_complete, MAIN_W - 210, SCREEN_H - 64);
-    lv_obj_set_style_bg_color(btn_complete, C_ACCENT, 0);
-    lv_obj_set_style_bg_opa(btn_complete, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(btn_complete, 12, 0);
-    lv_obj_set_style_shadow_width(btn_complete, 12, 0);
-    lv_obj_set_style_shadow_color(btn_complete, C_ACCENT, 0);
-    lv_obj_set_style_shadow_opa(btn_complete, LV_OPA_30, 0);
-    lv_obj_add_event_cb(btn_complete, cb_complete, LV_EVENT_CLICKED, NULL);
+            if (cal_tasks[i].completed) {
+                lv_obj_t *check_sym = lv_label_create(btn_check);
+                lv_label_set_text(check_sym, LV_SYMBOL_OK);
+                lv_obj_set_style_text_color(check_sym, C_WHITE, 0);
+                lv_obj_set_style_text_font(check_sym, &font_swedish_14, 0);
+                lv_obj_center(check_sym);
+            }
 
-    lbl_btn_complete = lv_label_create(btn_complete);
-    lv_label_set_text(lbl_btn_complete, "Complete");
-    lv_obj_set_style_text_color(lbl_btn_complete, C_WHITE, 0);
-    lv_obj_set_style_text_font(lbl_btn_complete, &font_swedish_14, 0);
-    lv_obj_center(lbl_btn_complete);
+            // Task title
+            lv_obj_t *lbl_title = lv_label_create(card);
+            lv_label_set_text(lbl_title, cal_tasks[i].title);
+            lv_obj_set_style_text_color(lbl_title, cal_tasks[i].completed ? th_muted() : th_fg(), 0);
+            if (cal_tasks[i].completed) {
+                lv_obj_set_style_text_decor(lbl_title, LV_TEXT_DECOR_STRIKETHROUGH, 0);
+            }
+            lv_obj_set_style_text_font(lbl_title, &font_swedish_14, 0);
+            lv_obj_set_width(lbl_title, MAIN_W - 200);
+            lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_DOT);
+            lv_obj_add_event_cb(lbl_title, cb_list_toggle, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+            lv_obj_add_flag(lbl_title, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *btn_next = lv_btn_create(mp);
-    lv_obj_set_size(btn_next, 48, 48);
-    lv_obj_set_pos(btn_next, MAIN_W - 62, SCREEN_H - 64);
-    lv_obj_set_style_bg_color(btn_next, th_fg(), 0);
-    lv_obj_set_style_bg_opa(btn_next, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(btn_next, 12, 0);
-    lv_obj_add_event_cb(btn_next, cb_next, LV_EVENT_CLICKED, NULL);
+            // Task Time
+            if (cal_tasks[i].time[0] != '\0') {
+                lv_obj_t *lbl_time = lv_label_create(card);
+                lv_label_set_text(lbl_time, cal_tasks[i].time);
+                lv_obj_set_style_text_color(lbl_time, th_muted(), 0);
+                lv_obj_set_style_text_font(lbl_time, &font_swedish_14, 0);
+                lv_obj_set_flex_grow(lbl_title, 1);
+            } else {
+                lv_obj_set_flex_grow(lbl_title, 1);
+            }
+        }
 
-    lv_obj_t *nl = lv_label_create(btn_next);
-    lv_label_set_text(nl, LV_SYMBOL_RIGHT);
-    lv_obj_set_style_text_color(nl, th_bg(), 0);
-    lv_obj_center(nl);
+        refresh_progress();
+        refresh_sidebar();
+        refresh_clock();
+    } else {
+        // Hero View Layout
+        // Task counter + time
+        lbl_task_counter = lv_label_create(mp);
+        lv_label_set_text(lbl_task_counter, "TASK 1 OF 1");
+        lv_obj_set_style_text_color(lbl_task_counter, C_ACCENT, 0);
+        lv_obj_set_style_text_font(lbl_task_counter, &font_swedish_14, 0);
+        lv_obj_set_pos(lbl_task_counter, 30, 120);
 
-    // Initial render
-    refresh_dots();
-    refresh_progress();
-    refresh_task();
-    refresh_sidebar();
-    refresh_clock();
+        lbl_task_time = lv_label_create(mp);
+        lv_label_set_text(lbl_task_time, "");
+        lv_obj_set_style_text_color(lbl_task_time, th_muted(), 0);
+        lv_obj_set_style_text_font(lbl_task_time, &font_swedish_14, 0);
+        lv_obj_set_pos(lbl_task_time, 170, 120);
+
+        // Completed badge
+        badge_completed = lv_obj_create(mp);
+        lv_obj_remove_style_all(badge_completed);
+        lv_obj_set_size(badge_completed, 120, 28);
+        lv_obj_set_pos(badge_completed, MAIN_W - 160, 117);
+        lv_obj_set_style_bg_color(badge_completed, C_ACCENT, 0);
+        lv_obj_set_style_bg_opa(badge_completed, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(badge_completed, 14, 0);
+        lv_obj_t *bl = lv_label_create(badge_completed);
+        lv_label_set_text(bl, "COMPLETED");
+        lv_obj_set_style_text_color(bl, C_WHITE, 0);
+        lv_obj_set_style_text_font(bl, &font_swedish_14, 0);
+        lv_obj_center(bl);
+        lv_obj_add_flag(badge_completed, LV_OBJ_FLAG_HIDDEN);
+
+        // Hero task title
+        lbl_task_title = lv_label_create(mp);
+        lv_label_set_text(lbl_task_title, "Loading...");
+        lv_obj_set_style_text_color(lbl_task_title, th_fg(), 0);
+        lv_obj_set_style_text_font(lbl_task_title, &font_swedish_48, 0);
+        lv_obj_set_width(lbl_task_title, MAIN_W - 70);
+        lv_label_set_long_mode(lbl_task_title, LV_LABEL_LONG_WRAP);
+        lv_obj_set_pos(lbl_task_title, 30, 155);
+
+        // Bottom bar
+        dots_container = lv_obj_create(mp);
+        lv_obj_remove_style_all(dots_container);
+        lv_obj_set_size(dots_container, 300, 14);
+        lv_obj_set_pos(dots_container, 30, SCREEN_H - 50);
+        lv_obj_set_flex_flow(dots_container, LV_FLEX_FLOW_ROW);
+        lv_obj_set_style_pad_column(dots_container, 6, 0);
+        lv_obj_set_flex_align(dots_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        btn_complete = lv_btn_create(mp);
+        lv_obj_set_size(btn_complete, 140, 48);
+        lv_obj_set_pos(btn_complete, MAIN_W - 210, SCREEN_H - 64);
+        lv_obj_set_style_bg_color(btn_complete, C_ACCENT, 0);
+        lv_obj_set_style_bg_opa(btn_complete, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(btn_complete, 12, 0);
+        lv_obj_set_style_shadow_width(btn_complete, 12, 0);
+        lv_obj_set_style_shadow_color(btn_complete, C_ACCENT, 0);
+        lv_obj_set_style_shadow_opa(btn_complete, LV_OPA_30, 0);
+        lv_obj_add_event_cb(btn_complete, cb_complete, LV_EVENT_CLICKED, NULL);
+
+        lbl_btn_complete = lv_label_create(btn_complete);
+        lv_label_set_text(lbl_btn_complete, "Complete");
+        lv_obj_set_style_text_color(lbl_btn_complete, C_WHITE, 0);
+        lv_obj_set_style_text_font(lbl_btn_complete, &font_swedish_14, 0);
+        lv_obj_center(lbl_btn_complete);
+
+        lv_obj_t *btn_next = lv_btn_create(mp);
+        lv_obj_set_size(btn_next, 48, 48);
+        lv_obj_set_pos(btn_next, MAIN_W - 62, SCREEN_H - 64);
+        lv_obj_set_style_bg_color(btn_next, th_fg(), 0);
+        lv_obj_set_style_bg_opa(btn_next, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(btn_next, 12, 0);
+        lv_obj_add_event_cb(btn_next, cb_next, LV_EVENT_CLICKED, NULL);
+
+        lv_obj_t *nl = lv_label_create(btn_next);
+        lv_label_set_text(nl, LV_SYMBOL_RIGHT);
+        lv_obj_set_style_text_color(nl, th_bg(), 0);
+        lv_obj_center(nl);
+
+        refresh_dots();
+        refresh_progress();
+        refresh_task();
+        refresh_sidebar();
+        refresh_clock();
+    }
 
     Serial.println("[UI] Task Viewer built (800x480)");
 }

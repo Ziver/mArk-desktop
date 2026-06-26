@@ -105,6 +105,21 @@ static void taskStoreSetDarkMode(bool dark) {
     prefs.end();
 }
 
+static bool taskStoreGetListView() {
+    Preferences prefs;
+    prefs.begin("tasks", true);
+    bool lv = prefs.getBool("list_view", false);
+    prefs.end();
+    return lv;
+}
+
+static void taskStoreSetListView(bool lv) {
+    Preferences prefs;
+    prefs.begin("tasks", false);
+    prefs.putBool("list_view", lv);
+    prefs.end();
+}
+
 static int taskStoreGetScreenTimeout() {
     return screen_timeout_min;
 }

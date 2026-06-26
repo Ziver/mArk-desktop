@@ -208,11 +208,7 @@ void loop() {
         Serial.println("[Wake] Display woke up, checking WiFi...");
         if (ensureWiFiConnected()) {
             webSettingsSetup();  // restart web server after reconnect
-            fetchTasks();
-            ui_completed = 0;
-            for (int i = 0; i < cal_task_count; i++)
-                if (cal_tasks[i].completed) ui_completed++;
-            do_refresh_all();
+            trigger_task_refresh();
             lastRefresh = millis();
         }
     }
@@ -227,11 +223,7 @@ void loop() {
     // Periodic task refresh
     if (millis() - lastRefresh > REFRESH_INTERVAL_MS && wifi_connected && !display_sleeping) {
         Serial.println("[Auto] Refreshing tasks...");
-        fetchTasks();
-        ui_completed = 0;
-        for (int i = 0; i < cal_task_count; i++)
-            if (cal_tasks[i].completed) ui_completed++;
-        do_refresh_all();
+        trigger_task_refresh();
         lastRefresh = millis();
     }
 

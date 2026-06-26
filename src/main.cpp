@@ -18,6 +18,21 @@
 
 StreakStore streakStore;
 
+static lv_obj_t *loading_title = nullptr;
+static lv_obj_t *loading_sub = nullptr;
+static lv_obj_t *loading_bar = nullptr;
+
+static void refresh_lvgl() {
+    static uint32_t last_tick_ms = 0;
+    uint32_t now = millis();
+    if (last_tick_ms == 0) {
+        last_tick_ms = now;
+    }
+    lv_tick_inc(now - last_tick_ms);
+    last_tick_ms = now;
+    lv_timer_handler();
+}
+
 void setup() {
     Serial.begin(115200);
     delay(2000);
@@ -43,17 +58,71 @@ void setup() {
 
     // Sound init deferred until after display + UI is fully built
 
-    // Show loading screen
-    lv_obj_t *loading = lv_label_create(lv_scr_act());
-    lv_label_set_text(loading, "Connecting...");
-    lv_obj_set_style_text_color(loading, lv_color_hex(0x6E7080), 0);
-    lv_obj_set_style_text_font(loading, &font_swedish_14, 0);
-    lv_obj_center(loading);
-    lv_timer_handler();
+    // Initialize dark mode preference early for the loading screen
+    ui_dark_mode = taskStoreGetDarkMode();
+
+    // Show loading screen matching theme preference
+    lv_obj_t *scr = lv_scr_act();
+    lv_obj_set_style_bg_color(scr, ui_dark_mode ? C_DARK_BG : C_BG, 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    // Large title
+    loading_title = lv_label_create(scr);
+    lv_label_set_text(loading_title, "Initializing...");
+    lv_obj_set_style_text_color(loading_title, ui_dark_mode ? C_DARK_TEXT : C_FG, 0);
+    lv_obj_set_style_text_font(loading_title, &lv_font_montserrat_28, 0);
+    lv_obj_align(loading_title, LV_ALIGN_CENTER, 0, -40);
+
+    // Sublabel for status
+    loading_sub = lv_label_create(scr);
+    lv_label_set_text(loading_sub, "Initializing connection...");
+    lv_obj_set_style_text_color(loading_sub, ui_dark_mode ? C_DARK_MUTED : C_MUTED, 0);
+    lv_obj_set_style_text_font(loading_sub, &lv_font_montserrat_14, 0);
+    lv_obj_align(loading_sub, LV_ALIGN_CENTER, 0, 10);
+
+    // Accent-colored progress bar
+    loading_bar = lv_bar_create(scr);
+    lv_obj_set_size(loading_bar, 300, 6);
+    lv_obj_align(loading_bar, LV_ALIGN_CENTER, 0, 45);
+    lv_obj_set_style_bg_color(loading_bar, ui_dark_mode ? C_DARK_BORDER : C_BORDER, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(loading_bar, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(loading_bar, C_ACCENT, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(loading_bar, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(loading_bar, 3, LV_PART_MAIN);
+    lv_obj_set_style_radius(loading_bar, 3, LV_PART_INDICATOR);
+    lv_bar_set_value(loading_bar, 10, LV_ANIM_OFF);
+
+    refresh_lvgl();
+    delay(500); // Allow initial screen to render fully
 
     // 2. WiFi + NTP
-    bool online = setupWiFi();
-    
+    bool online = setupWiFi([](int attempts, const char* status) {
+        Serial.printf("[SETUP_CB] attempts=%d, status=%s\n", attempts, status);
+        if (loading_title && loading_sub && loading_bar) {
+            if (attempts >= 0) {
+                lv_label_set_text(loading_title, "Initializing...");
+                lv_obj_align(loading_title, LV_ALIGN_CENTER, 0, -40);
+                lv_label_set_text(loading_sub, status);
+                lv_obj_align(loading_sub, LV_ALIGN_CENTER, 0, 10);
+                lv_bar_set_value(loading_bar, 10 + attempts, LV_ANIM_OFF);
+            } else if (attempts == -1) {
+                lv_label_set_text(loading_title, "Initializing...");
+                lv_obj_align(loading_title, LV_ALIGN_CENTER, 0, -40);
+                lv_label_set_text(loading_sub, status);
+                lv_obj_align(loading_sub, LV_ALIGN_CENTER, 0, 10);
+                lv_bar_set_value(loading_bar, 60, LV_ANIM_OFF);
+            } else if (attempts == -2) {
+                lv_label_set_text(loading_title, "Failed to Connect");
+                lv_obj_set_style_text_color(loading_title, lv_color_hex(0xE53E3E), 0); // Red error text
+                lv_obj_align(loading_title, LV_ALIGN_CENTER, 0, -40);
+                lv_label_set_text(loading_sub, status);
+                lv_obj_align(loading_sub, LV_ALIGN_CENTER, 0, 10);
+                lv_bar_set_value(loading_bar, 100, LV_ANIM_OFF);
+            }
+            refresh_lvgl();
+        }
+    });
+
     // 3. Streak store + calendar store (NVS)
     streakStore.begin();
     taskStoreInit();
@@ -63,15 +132,32 @@ void setup() {
 
     // 5. Fetch tasks
     if (online) {
-        lv_label_set_text(loading, "Loading tasks...");
-        lv_timer_handler();
+        if (loading_title) {
+            lv_label_set_text(loading_title, "Initializing...");
+            lv_obj_align(loading_title, LV_ALIGN_CENTER, 0, -40);
+        }
+        if (loading_sub) {
+            lv_label_set_text(loading_sub, "Fetching tasks from providers...");
+            lv_obj_align(loading_sub, LV_ALIGN_CENTER, 0, 10);
+        }
+        if (loading_bar) lv_bar_set_value(loading_bar, 85, LV_ANIM_OFF);
+        refresh_lvgl();
+        delay(800); // Allow NTP sync info to stay on screen
         fetchTasks();
+        if (loading_bar) lv_bar_set_value(loading_bar, 100, LV_ANIM_OFF);
+        if (loading_sub) {
+            lv_label_set_text(loading_sub, "Ready!");
+            lv_obj_align(loading_sub, LV_ALIGN_CENTER, 0, 10);
+        }
+        refresh_lvgl();
+        delay(500); // Pause briefly at 100% loading
     } else {
         // Offline fallback
         strncpy(cal_tasks[0].title, "No WiFi connection", MAX_TITLE_LEN);
         cal_tasks[0].time[0] = '\0';
         cal_tasks[0].completed = false;
         cal_task_count = 1;
+        delay(3000); // Give user time to see the red "Failed to Connect" screen
     }
     
     // 6. Clear entire screen and build UI

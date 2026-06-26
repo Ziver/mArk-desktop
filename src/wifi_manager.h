@@ -18,22 +18,32 @@
 static bool wifi_connected = false;
 static bool time_synced = false;
 
-bool setupWiFi() {
+bool setupWiFi(void (*cb)(int attempts, const char* status) = nullptr) {
     Serial.printf("[WiFi] Connecting to %s", WIFI_SSID);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    
+
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 40) {
+        if (cb) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "SSID: %s (Attempt %d/40)...", WIFI_SSID, attempts + 1);
+            cb(attempts, buf);
+        }
         delay(500);
         Serial.print(".");
         attempts++;
     }
     Serial.println();
-    
+
     if (WiFi.status() == WL_CONNECTED) {
         wifi_connected = true;
         Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-        
+
+        if (cb) {
+            cb(-1, "Syncing time (NTP)...");
+            delay(800);
+        }
+
         // Sync NTP
         configTime(GMT_OFFSET_SEC, DST_OFFSET_SEC, NTP_SERVER);
         struct tm timeinfo;
@@ -48,6 +58,9 @@ bool setupWiFi() {
         return true;
     } else {
         Serial.println("[WiFi] Connection failed!");
+        if (cb) {
+            cb(-2, "Failed to connect to WiFi.");
+        }
         return false;
     }
 }

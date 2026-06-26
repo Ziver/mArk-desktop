@@ -997,8 +997,8 @@ void buildTaskViewerUI() {
     lbl_clock = lv_label_create(mp);
     lv_label_set_text(lbl_clock, "00:00");
     lv_obj_set_style_text_color(lbl_clock, th_fg(), 0);
-    lv_obj_set_style_text_font(lbl_clock, &font_swedish_14, 0);
-    lv_obj_set_pos(lbl_clock, 30, 20);
+    lv_obj_set_style_text_font(lbl_clock, &font_swedish_28, 0);
+    lv_obj_set_pos(lbl_clock, 30, 16);
 
     // WiFi status icon (moved left to make room for settings button)
     lv_obj_t *wifi_icon = lv_label_create(mp);

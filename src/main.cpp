@@ -11,10 +11,10 @@
 #include "wifi_manager.h"
 #include "task_store.h"
 #include "task_fetch.h"
-#include "web_settings.h"
 #include "streak_store.h"
 // sound_driver.h removed — I2S conflicts with RGB display on arduino-esp32 2.0.3
 #include "ui_taskviewer.h"
+#include "web_settings.h"
 
 StreakStore streakStore;
 
@@ -161,8 +161,7 @@ void setup() {
     }
     
     // 6. Clear entire screen and build UI
-    lv_obj_clean(lv_scr_act());
-    buildTaskViewerUI();
+    uiRebuild(false);
 
     // Force full screen redraw
     lv_refr_now(NULL);

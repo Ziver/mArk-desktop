@@ -97,6 +97,7 @@ static void hide_keyboard();
 void buildTaskViewerUI();
 void show_settings_overlay();
 void hide_settings_overlay();
+void uiRebuild(bool force_reopen_settings = false);
 
 // ── Callbacks ──
 static void cb_complete(lv_event_t *e) {
@@ -159,11 +160,7 @@ static void cb_toggle_dark(lv_event_t *e) {
     ui_dark_mode = !ui_dark_mode;
     taskStoreSetDarkMode(ui_dark_mode);
     Serial.printf("[UI] Dark mode: %s\n", ui_dark_mode ? "ON" : "OFF");
-    lv_obj_clean(lv_scr_act());
-    complete_screen = NULL;
-    kb_overlay = NULL;
-    kb_lbl_input = NULL;
-    buildTaskViewerUI();
+    uiRebuild(true);
 }
 
 // ── Completion screen callbacks ──
@@ -647,6 +644,19 @@ void hide_settings_overlay() {
     settings_overlay = NULL;
 }
 
+void uiRebuild(bool force_reopen_settings) {
+    bool was_settings_open = (settings_overlay != NULL) || force_reopen_settings;
+    lv_obj_clean(lv_scr_act());
+    complete_screen = NULL;
+    kb_overlay = NULL;
+    kb_lbl_input = NULL;
+    settings_overlay = NULL;
+    buildTaskViewerUI();
+    if (was_settings_open) {
+        show_settings_overlay();
+    }
+}
+
 void show_settings_overlay() {
     if (settings_overlay) return;
 
@@ -688,7 +698,7 @@ void show_settings_overlay() {
     lv_label_set_text(lbl_ip, ipBuf);
     lv_obj_set_style_text_color(lbl_ip, C_ACCENT, 0);
     lv_obj_set_style_text_font(lbl_ip, &font_swedish_48, 0);
-    lv_obj_align(lbl_ip, LV_ALIGN_CENTER, 0, -20);
+    lv_obj_align(lbl_ip, LV_ALIGN_CENTER, 0, -40);
 
     // Instructions
     lv_obj_t *sub = lv_label_create(settings_overlay);
@@ -696,7 +706,24 @@ void show_settings_overlay() {
     lv_obj_set_style_text_color(sub, th_muted(), 0);
     lv_obj_set_style_text_font(sub, &font_swedish_14, 0);
     lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(sub, LV_ALIGN_CENTER, 0, 60);
+    lv_obj_align(sub, LV_ALIGN_CENTER, 0, 30);
+
+    // Dark mode button
+    lv_obj_t *btn_dark = lv_btn_create(settings_overlay);
+    lv_obj_set_size(btn_dark, 180, 44);
+    lv_obj_set_style_bg_color(btn_dark, th_card(), 0);
+    lv_obj_set_style_radius(btn_dark, 12, 0);
+    lv_obj_set_style_border_width(btn_dark, 1, 0);
+    lv_obj_set_style_border_color(btn_dark, th_border(), 0);
+    lv_obj_set_style_shadow_width(btn_dark, 0, 0);
+    lv_obj_add_event_cb(btn_dark, cb_toggle_dark, LV_EVENT_CLICKED, NULL);
+    lv_obj_align(btn_dark, LV_ALIGN_BOTTOM_MID, 0, -60);
+
+    lv_obj_t *dark_lbl = lv_label_create(btn_dark);
+    lv_label_set_text(dark_lbl, ui_dark_mode ? LV_SYMBOL_EYE_CLOSE "  LIGHT" : LV_SYMBOL_EYE_OPEN "  DARK");
+    lv_obj_set_style_text_color(dark_lbl, th_fg(), 0);
+    lv_obj_set_style_text_font(dark_lbl, &font_swedish_14, 0);
+    lv_obj_center(dark_lbl);
 }
 
 // ══════════════════════════════════════
@@ -840,7 +867,7 @@ void buildTaskViewerUI() {
     // Refresh button
     lv_obj_t *btn_refresh_sb = lv_btn_create(sb);
     lv_obj_set_size(btn_refresh_sb, SIDEBAR_W - 32, 40);
-    lv_obj_set_pos(btn_refresh_sb, 16, SCREEN_H - 96);
+    lv_obj_set_pos(btn_refresh_sb, 16, SCREEN_H - 48);
     lv_obj_set_style_bg_color(btn_refresh_sb, th_card(), 0);
     lv_obj_set_style_radius(btn_refresh_sb, 12, 0);
     lv_obj_add_event_cb(btn_refresh_sb, [](lv_event_t *e) {
@@ -858,20 +885,6 @@ void buildTaskViewerUI() {
     lv_obj_set_style_text_color(rl, th_fg(), 0);
     lv_obj_set_style_text_font(rl, &font_swedish_14, 0);
     lv_obj_center(rl);
-
-    // Dark mode button
-    lv_obj_t *btn_dark = lv_btn_create(sb);
-    lv_obj_set_size(btn_dark, SIDEBAR_W - 32, 40);
-    lv_obj_set_pos(btn_dark, 16, SCREEN_H - 48);
-    lv_obj_set_style_bg_color(btn_dark, th_card(), 0);
-    lv_obj_set_style_radius(btn_dark, 12, 0);
-    lv_obj_add_event_cb(btn_dark, cb_toggle_dark, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *dark_lbl = lv_label_create(btn_dark);
-    lv_label_set_text(dark_lbl, ui_dark_mode ? LV_SYMBOL_EYE_CLOSE "  LIGHT" : LV_SYMBOL_EYE_OPEN "  DARK");
-    lv_obj_set_style_text_color(dark_lbl, th_fg(), 0);
-    lv_obj_set_style_text_font(dark_lbl, &font_swedish_14, 0);
-    lv_obj_center(dark_lbl);
 
     // ═══ RIGHT PANEL ═══
     lv_obj_t *mp = lv_obj_create(scr);

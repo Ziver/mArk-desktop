@@ -88,6 +88,12 @@ static String wsPage() {
          "<label>Screen Timeout (minutes)</label>"
          "<input type='number' name='timeout' min='0' max='1440' value='" + String(taskStoreGetScreenTimeout()) + "' required>"
          "<p class='hint'>Minutes of inactivity before the screen turns off. Set to 0 to disable timeout.</p>"
+         "<label>Appearance Theme</label>"
+         "<select name='dark_mode'>"
+         "<option value='0'" + String(taskStoreGetDarkMode() ? "" : " selected") + ">Light Theme</option>"
+         "<option value='1'" + String(taskStoreGetDarkMode() ? " selected" : "") + ">Dark Theme</option>"
+         "</select>"
+         "<p class='hint'>Choose Light Mode or Dark Mode theme for the display.</p>"
          "<button class='submit' type='submit'>Save Settings</button>"
          "</form></div>";
 
@@ -151,6 +157,18 @@ static void wsSettings() {
         if (timeout < 0) timeout = 0;
         taskStoreSetScreenTimeout(timeout);
         Serial.printf("[Web] Saved screen timeout: %d min\n", timeout);
+    }
+    if (webServer.hasArg("dark_mode")) {
+        bool dark = webServer.arg("dark_mode").toInt() == 1;
+        bool old_dark = taskStoreGetDarkMode();
+        if (dark != old_dark) {
+            taskStoreSetDarkMode(dark);
+            ui_dark_mode = dark;
+            Serial.printf("[Web] Saved theme preference: %s\n", dark ? "DARK" : "LIGHT");
+
+            // Rebuild UI immediately to reflect the theme change
+            uiRebuild();
+        }
     }
     webServer.sendHeader("Location", "/");
     webServer.send(302, "text/plain", "");
